@@ -32,6 +32,8 @@ pub struct RlvizConfig {
     /// TCP port for live streams (127.0.0.1).
     pub port: u16,
     pub record: record::RecordConfig,
+    /// `--loop`: play the replay over and over.
+    pub looping: bool,
     /// Fixed camera (position, look-at point) in game coordinates, from `--camera`.
     pub camera: Option<([f32; 3], [f32; 3])>,
 }
@@ -62,6 +64,8 @@ pub struct Timeline {
     follow: bool,
     /// Frame last sent to the viewer.
     shown: Option<usize>,
+    /// Start again from the first frame after the end (replays, not live streams).
+    looping: bool,
 }
 
 impl Default for Timeline {
@@ -80,6 +84,7 @@ impl Default for Timeline {
             clock: 0.,
             follow: false,
             shown: None,
+            looping: false,
         }
     }
 }
@@ -179,7 +184,8 @@ fn place_camera(
     *done = true;
 }
 
-fn start_sources(config: Res<RlvizConfig>, mut commands: Commands) {
+fn start_sources(config: Res<RlvizConfig>, mut timeline: ResMut<Timeline>, mut commands: Commands) {
+    timeline.looping = config.looping;
     let (tx, rx) = crossbeam_channel::unbounded();
     if let Some(path) = &config.replay {
         source::spawn_file_reader(path.clone(), tx.clone());
@@ -198,6 +204,7 @@ fn ingest(rx: Res<SourceRx>, mut timeline: ResMut<Timeline>, mut toggles: ResMut
                     live,
                     follow: live,
                     speed: timeline.speed,
+                    looping: timeline.looping,
                     ..Default::default()
                 };
             }
@@ -224,6 +231,9 @@ fn ingest(rx: Res<SourceRx>, mut timeline: ResMut<Timeline>, mut toggles: ResMut
     }
 }
 
+/// Seconds the last frame stays on screen before a loop starts over.
+const LOOP_PAUSE: f64 = 1.0;
+
 fn advance(time: Res<Time>, recording: Res<Recording>, mut timeline: ResMut<Timeline>) {
     if !timeline.playing || timeline.follow || timeline.frames.is_empty() {
         return;
@@ -249,6 +259,11 @@ fn advance(time: Res<Time>, recording: Res<Recording>, mut timeline: ResMut<Time
     if timeline.cursor + 1 == timeline.frames.len() {
         if timeline.live && !timeline.ended {
             timeline.follow = true;
+        } else if timeline.looping && !recording.active() {
+            // hold the last frame for a moment, then start over (once the whole file is read)
+            if timeline.ended && timeline.clock >= LOOP_PAUSE {
+                timeline.seek(0);
+            }
         } else {
             timeline.playing = false;
         }
@@ -545,6 +560,7 @@ fn timeline_ui(
                     }
                 });
             timeline.speed = speed;
+            ui.checkbox(&mut timeline.looping, "Loop").on_hover_text("Start over after the end");
 
             let tick = timeline.frames[timeline.cursor].tick;
             ui.monospace(format!(

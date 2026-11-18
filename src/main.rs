@@ -57,6 +57,7 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
         port: rlviz::DEFAULT_PORT,
         record: rlviz::record::RecordConfig::default(),
         camera: None,
+        looping: false,
     };
     let mut window = None;
     let mut positional = Vec::new();
@@ -65,6 +66,7 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--replay" => config.replay = args.next().map(PathBuf::from),
+            "--loop" => config.looping = true,
             "--rlviz-port" => config.port = value(&arg, args.next()),
             "--record" => config.record.path = args.next().map(PathBuf::from),
             "--fps" => config.record.fps = value(&arg, args.next()),

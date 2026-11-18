@@ -71,6 +71,9 @@ port). A second one needs other ports: `rlviser 34255 45244 --rlviz-port 45301`.
 
 ## Viewer controls
 
+A replay starts playing when it opens. `--loop` (or `Loop` in the panel) starts it over after the end,
+for leaving a replay running on a screen.
+
 Timeline (bottom panel and keys): `K` play/pause, `,` `.` one frame back/forward, `J` `L` one second
 back/forward, `Home` `End`, speed 0.05x–16x, drag the slider to scrub. While a live stream is
 connected the timeline follows the newest frame ("LIVE"); scrubbing back stops following, `End`
