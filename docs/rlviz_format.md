@@ -34,8 +34,9 @@ A change that old readers would misread bumps `version`. Producer: `python/rlviz
 
 `config` is the car's hitbox and wheels (as RocketSim's `CarConfig`):
 `{hitbox_size: [3], hitbox_offset: [3], front_wheels: {radius, suspension_rest, offset: [3]},
-back_wheels: {...}, dodge_deadzone}`. The viewer picks the car body from `hitbox_size`. A car missing
-from the header is drawn as an Octane on the blue team.
+back_wheels: {...}, dodge_deadzone}`. The viewer picks the car body from `hitbox_size`. Without
+`config` the car is drawn as an Octane; a car missing from the header is drawn as an Octane on the blue
+team.
 
 ## Frame
 

@@ -38,6 +38,9 @@ class BallPrediction(Layer):
     def _get_arena(self, ctx: DrawContext):
         import RocketSim as rs
 
+        from .. import sim
+
+        sim.init()
         mode = ctx.header["game_mode"]
         if self._arena is None or self._mode != mode:
             self._arena = rs.Arena(getattr(rs.GameMode, mode.upper(), rs.GameMode.SOCCAR), tick_rate=ctx.tick_rate)

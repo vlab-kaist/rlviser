@@ -40,7 +40,9 @@ pub struct PadConfig {
 pub struct CarHeader {
     pub id: u64,
     pub team: u8,
-    pub config: CarConfig,
+    /// Missing: an Octane.
+    #[serde(default)]
+    pub config: Option<CarConfig>,
 }
 
 #[derive(Deserialize, Clone, Debug)]

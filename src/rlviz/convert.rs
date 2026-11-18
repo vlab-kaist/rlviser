@@ -113,7 +113,9 @@ pub fn to_game_state(header: &Header, frame: &Frame) -> GameState {
                 id: car.id,
                 team: if info.is_some_and(|i| i.team == 1) { Team::Orange } else { Team::Blue },
                 state: Box::new(state),
-                config: info.map_or_else(default_car_config, |i| car_config(&i.config)),
+                config: info
+                    .and_then(|i| i.config.as_ref())
+                    .map_or_else(default_car_config, car_config),
             }
         })
         .collect();
