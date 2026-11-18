@@ -78,6 +78,29 @@ resumes.
 
 The **Layers** window lists every draw group seen so far; untick one to hide it.
 
+## Recording videos
+
+The viewer records mp4 (H.264, needs `ffmpeg` with libx264). While recording, the timeline advances
+by exactly `speed / fps` seconds of game time per rendered frame and every frame is captured, so the
+video timing is exact however slowly frames render (on Xvfb too). The timeline panel, the Layers
+window and the Menu are hidden in the video; scene, debug draws and labels are kept, from the current
+camera.
+
+* **From the viewer**: `Rec` in the timeline panel or `F9` starts at the current frame; `F9` stops
+  (or the end of the replay). The file goes next to the replay as `<name>-<unix time>.mp4`.
+* **From the command line** (renders and quits, works headless on a virtual display):
+
+  ```sh
+  rlviser --replay game.rlviz --record clip.mp4 --from 10 --to 16 --fps 60 --window 1920x1080
+  # --record-speed 0.25 for slow motion (game time per video second)
+  ```
+
+  `--from`/`--to` are seconds from the start of the replay. Pick the camera beforehand in the Menu or
+  in `settings.txt` (`camera_state={"TrackCar":1}`, `"Spectator"`, `{"Director":0}`).
+
+Recording a live stream captures frames as they are rendered (not game-time exact); record the saved
+replay instead when timing matters.
+
 Cameras and the rest are RLViser's own: `1`–`8` follow the car with that id, `9` director camera,
 `0` free camera (`WASD`, mouse, `Space`/`Ctrl` up/down, `Shift` faster), `Escape` frees the mouse
 for the menus. The Menu window has ball cam and graphics settings (saved in `settings.txt`).
@@ -173,7 +196,9 @@ The rlviz code is in `src/rlviz/`:
 * `format.rs`: serde types for the stream (`Header`, `Frame`, `Prim`);
 * `source.rs`: reader threads for a file (zstd) and the TCP listener;
 * `convert.rs`: rlviz frame → RLViser's `GameState`;
-* `mod.rs`: the `Timeline` resource, playback, the timeline/layers UI, gizmo and label drawing.
+* `record.rs`: video recording (screenshots piped to ffmpeg);
+* `mod.rs`: the `Timeline` resource, playback, recording control, the timeline/layers UI, gizmo and
+  label drawing.
 
 The frame under the cursor is pushed into RLViser's own update channel (`udp::UdpInjector`), so the
 cars, ball, pads, cameras and interpolation are RLViser's unchanged code. Debug primitives are Bevy
@@ -182,7 +207,9 @@ projected from world positions.
 
 Changes to upstream files are small and marked in the history: the `bevy_gizmos_render` feature (in
 Bevy 0.18 gizmos need it to be drawn at all), gizmos limited to the 3D camera, the `wayland` feature
-dropped (no wayland headers on v2), `UdpInjector`, and the command line options in `main.rs`.
+dropped (no wayland headers on v2), `UdpInjector` and `UdpUpdate::Snap` (show a state exactly, without
+interpolating from the previous one; used for seeking and recording), the `ApplyUdpUpdates` system set,
+and the command line options in `main.rs`.
 
 Keep RL-specific logic out of the viewer: anything that needs to know what a policy, a reward or a
 plan is belongs in a Python layer. The viewer should only learn new generic primitives.

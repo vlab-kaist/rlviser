@@ -465,6 +465,8 @@ pub struct PausedUpdate(pub bool);
 
 pub enum UdpUpdate {
     State(GameState),
+    /// Show this state exactly, without blending from the previous one (rlviz seeking/recording).
+    Snap(GameState),
     AddRender(AddRender),
     RemoveRender(RemoveRender),
     Speed(f32),
@@ -475,6 +477,10 @@ pub enum UdpUpdate {
 
 #[derive(Resource, Deref)]
 struct UdpUpdateStream(Receiver<UdpUpdate>);
+
+/// The system that applies received updates; rlviz feeds its frames before it.
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ApplyUdpUpdates;
 
 /// Feeds updates into the same stream as the UDP socket (used by rlviz playback).
 #[derive(Resource, Deref)]
@@ -623,6 +629,7 @@ fn apply_udp_updates(
     packet_time_elapsed.tick(time.delta());
 
     let mut new_game_state = None;
+    let mut snap_state = None;
 
     for update in udp_updates.try_iter() {
         match update {
@@ -632,6 +639,11 @@ fn apply_udp_updates(
             }
             UdpUpdate::State(new_state) => {
                 new_game_state = Some(new_state);
+                snap_state = None;
+            }
+            UdpUpdate::Snap(new_state) => {
+                snap_state = Some(new_state);
+                new_game_state = None;
             }
             UdpUpdate::AddRender(add_render) => {
                 render_groups.groups.insert(add_render.id, add_render.commands);
@@ -651,6 +663,15 @@ fn apply_udp_updates(
                 socket.send(SendableUdp::Speed(game_speed.speed)).unwrap();
             }
         }
+    }
+
+    if let Some(state) = snap_state {
+        packet_time_elapsed.reset();
+        game_states.last = state.clone();
+        game_states.current = state.clone();
+        game_states.next = state;
+        packet_updated.0 = true;
+        return;
     }
 
     match new_game_state {
@@ -1719,7 +1740,7 @@ impl Plugin for RocketSimPlugin {
                     establish_connection.run_if(in_state(GameLoadState::Connect)),
                     (
                         (
-                            apply_udp_updates,
+                            apply_udp_updates.in_set(ApplyUdpUpdates),
                             (
                                 (
                                     (

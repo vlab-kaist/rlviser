@@ -7,6 +7,7 @@
 
 mod convert;
 pub mod format;
+pub mod record;
 mod source;
 
 use std::{collections::BTreeMap, path::PathBuf};
@@ -17,7 +18,8 @@ use crossbeam_channel::Receiver;
 
 use crate::{
     camera::PrimaryCamera,
-    udp::{ToBevyVec, UdpInjector, UdpUpdate},
+    settings::options::MenuFocused,
+    udp::{ApplyUdpUpdates, ToBevyVec, UdpInjector, UdpUpdate},
 };
 use format::{DrawGroup, Frame, Header, Prim, Rgba};
 use source::SourceMsg;
@@ -29,6 +31,7 @@ pub struct RlvizConfig {
     pub replay: Option<PathBuf>,
     /// TCP port for live streams (127.0.0.1).
     pub port: u16,
+    pub record: record::RecordConfig,
 }
 
 pub const DEFAULT_PORT: u16 = 45300;
@@ -126,6 +129,26 @@ impl Timeline {
     }
 }
 
+/// Video recording state.
+#[derive(Resource, Default)]
+struct Recording {
+    session: Option<record::Session>,
+    /// Sessions that stopped capturing and wait for ffmpeg to finish.
+    finishing: Vec<record::Session>,
+    /// Frames rendered since the first state was shown (command line recording waits for assets).
+    warmup: u32,
+    cli_started: bool,
+    /// The menu's open state before recording hid it.
+    menu_was_open: Option<bool>,
+    status: Option<String>,
+}
+
+impl Recording {
+    fn active(&self) -> bool {
+        self.session.is_some()
+    }
+}
+
 /// Which draw groups are shown, by name. New groups start visible.
 #[derive(Resource, Default)]
 struct LayerToggles(BTreeMap<String, bool>);
@@ -181,13 +204,17 @@ fn ingest(rx: Res<SourceRx>, mut timeline: ResMut<Timeline>, mut toggles: ResMut
     }
 }
 
-fn advance(time: Res<Time>, mut timeline: ResMut<Timeline>) {
+fn advance(time: Res<Time>, recording: Res<Recording>, mut timeline: ResMut<Timeline>) {
     if !timeline.playing || timeline.follow || timeline.frames.is_empty() {
         return;
     }
 
     let tick_rate = timeline.tick_rate();
-    timeline.clock += time.delta_secs_f64() * f64::from(timeline.speed);
+    // While recording, each rendered frame is one video frame of game time.
+    timeline.clock += match &recording.session {
+        Some(session) => f64::from(session.speed) / f64::from(session.fps),
+        None => time.delta_secs_f64() * f64::from(timeline.speed),
+    };
     let target = timeline.frames[timeline.cursor].tick as f64 + timeline.clock * tick_rate;
 
     let mut cursor = timeline.cursor;
@@ -208,9 +235,9 @@ fn advance(time: Res<Time>, mut timeline: ResMut<Timeline>) {
     }
 }
 
-/// Sends the cursor frame to the viewer. A jump or a paused timeline sends the state twice so the
-/// viewer's interpolation has nothing to blend from (otherwise it would drift past the frame).
-fn show_frame(injector: Option<Res<UdpInjector>>, mut timeline: ResMut<Timeline>) {
+/// Sends the cursor frame to the viewer. Normal playback lets the viewer interpolate between
+/// frames; jumps, a paused timeline and recording show the frame exactly (`Snap`).
+fn show_frame(injector: Option<Res<UdpInjector>>, recording: Res<Recording>, mut timeline: ResMut<Timeline>) {
     let Some(injector) = injector else { return };
     let Some(header) = &timeline.header else { return };
     if timeline.frames.is_empty() || timeline.shown == Some(timeline.cursor) {
@@ -219,11 +246,103 @@ fn show_frame(injector: Option<Res<UdpInjector>>, mut timeline: ResMut<Timeline>
 
     let state = convert::to_game_state(header, &timeline.frames[timeline.cursor]);
     let contiguous = timeline.shown.is_some_and(|s| s + 1 == timeline.cursor);
-    if !(contiguous && (timeline.playing || timeline.follow)) {
-        drop(injector.send(UdpUpdate::State(state.clone())));
-    }
-    drop(injector.send(UdpUpdate::State(state)));
+    let smooth = contiguous && (timeline.playing || timeline.follow) && !recording.active();
+    drop(injector.send(if smooth { UdpUpdate::State(state) } else { UdpUpdate::Snap(state) }));
     timeline.shown = Some(timeline.cursor);
+}
+
+fn start_recording(
+    recording: &mut Recording,
+    timeline: &mut Timeline,
+    menu: &mut MenuFocused,
+    path: PathBuf,
+    config: &record::RecordConfig,
+    end_tick: Option<u64>,
+    exit_when_done: bool,
+) {
+    info!("recording to {}", path.display());
+    recording.status = Some(format!("recording to {}", path.display()));
+    recording.menu_was_open = Some(menu.0);
+    menu.0 = false;
+    timeline.playing = true;
+    timeline.clock = 0.;
+    recording.session = Some(record::Session::start(path, config.fps, config.speed, end_tick, exit_when_done));
+}
+
+fn stop_recording(recording: &mut Recording, menu: &mut MenuFocused) {
+    if let Some(mut session) = recording.session.take() {
+        session.stop();
+        recording.finishing.push(session);
+    }
+    if let Some(open) = recording.menu_was_open.take() {
+        menu.0 = open;
+    }
+}
+
+/// Starts the command line recording, captures frames, stops at the end and reaps finished files.
+fn drive_recording(
+    mut commands: Commands,
+    config: Res<RlvizConfig>,
+    mut recording: ResMut<Recording>,
+    mut timeline: ResMut<Timeline>,
+    mut menu: ResMut<MenuFocused>,
+    mut exit: MessageWriter<AppExit>,
+) {
+    // Command line recording: wait until the replay is shown and cars/meshes had time to load.
+    if let Some(path) = &config.record.path
+        && !recording.cli_started
+        && timeline.shown.is_some()
+    {
+        recording.warmup += 1;
+        if recording.warmup >= 90 && (timeline.ended || !timeline.live) {
+            recording.cli_started = true;
+            let first = timeline.frames[0].tick;
+            let tick_rate = timeline.tick_rate();
+            let at = |seconds: f64| first + (seconds * tick_rate).round() as u64;
+            if let Some(from) = config.record.from {
+                let index = timeline.frames.partition_point(|f| f.tick < at(from));
+                timeline.seek(index);
+            } else {
+                timeline.seek(0);
+            }
+            let end_tick = config.record.to.map(at);
+            start_recording(&mut recording, &mut timeline, &mut menu, path.clone(), &config.record, end_tick, true);
+            // Show the start frame before the first capture.
+            return;
+        }
+    }
+
+    if let Some(session) = &mut recording.session {
+        session.capture(&mut commands);
+        let tick = timeline.frames.get(timeline.cursor).map_or(0, |f| f.tick);
+        let at_end = timeline.cursor + 1 >= timeline.frames.len() && !(timeline.live && !timeline.ended);
+        if session.end_tick.is_some_and(|end| tick >= end) || at_end || !timeline.playing && !timeline.follow {
+            stop_recording(&mut recording, &mut menu);
+            timeline.playing = false;
+        }
+    }
+
+    let mut exit_now = false;
+    let mut status = None;
+    recording.finishing.retain_mut(|session| match session.poll() {
+        None => true,
+        Some(result) => {
+            let msg = match result {
+                Ok(path) => format!("saved {} ({} frames)", path.display(), session.frames),
+                Err(e) => format!("recording failed: {e}"),
+            };
+            println!("{msg}");
+            status = Some(msg);
+            exit_now |= session.exit_when_done;
+            false
+        }
+    });
+    if status.is_some() {
+        recording.status = status;
+    }
+    if exit_now {
+        exit.write(AppExit::Success);
+    }
 }
 
 fn color(c: Rgba) -> Color {
@@ -293,12 +412,35 @@ fn draw_labels(
     }
 }
 
+fn toggle_recording(
+    config: &RlvizConfig,
+    recording: &mut Recording,
+    timeline: &mut Timeline,
+    menu: &mut MenuFocused,
+) {
+    if recording.active() {
+        stop_recording(recording, menu);
+    } else {
+        let path = record::default_path(config.replay.as_ref());
+        start_recording(recording, timeline, menu, path, &config.record, None, false);
+    }
+}
+
 fn timeline_keys(
     mut contexts: Single<&mut EguiContext, With<PrimaryEguiContext>>,
     keys: Res<ButtonInput<KeyCode>>,
+    config: Res<RlvizConfig>,
     mut timeline: ResMut<Timeline>,
+    mut recording: ResMut<Recording>,
+    mut menu: ResMut<MenuFocused>,
 ) {
     if contexts.get_mut().wants_keyboard_input() || timeline.frames.is_empty() {
+        return;
+    }
+    if keys.just_pressed(KeyCode::F9) {
+        toggle_recording(&config, &mut recording, &mut timeline, &mut menu);
+    }
+    if recording.active() {
         return;
     }
     if keys.just_pressed(KeyCode::KeyK) {
@@ -327,10 +469,17 @@ fn timeline_keys(
 
 fn timeline_ui(
     mut contexts: Single<&mut EguiContext, With<PrimaryEguiContext>>,
+    config: Res<RlvizConfig>,
     mut timeline: ResMut<Timeline>,
     mut toggles: ResMut<LayerToggles>,
+    mut recording: ResMut<Recording>,
+    mut menu: ResMut<MenuFocused>,
 ) {
     let ctx = contexts.get_mut();
+    // Nothing of ours in the video.
+    if recording.active() {
+        return;
+    }
 
     egui::TopBottomPanel::bottom("rlviz_timeline").show(ctx, |ui| {
         if let Some(e) = &timeline.error {
@@ -388,8 +537,14 @@ fn timeline_ui(
                 let text = if timeline.follow { "LIVE" } else { "live (behind)" };
                 ui.colored_label(egui::Color32::LIGHT_RED, text);
             }
+            if ui.button("Rec").on_hover_text("Record a video from here (F9 stops)").clicked() {
+                toggle_recording(&config, &mut recording, &mut timeline, &mut menu);
+            }
             ui.label(&timeline.label);
         });
+        if let Some(status) = &recording.status {
+            ui.label(status);
+        }
 
         let mut cursor = timeline.cursor;
         ui.spacing_mut().slider_width = ui.available_width();
@@ -414,8 +569,9 @@ impl Plugin for RlvizPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(Timeline::default())
             .insert_resource(LayerToggles::default())
+            .insert_resource(Recording::default())
             .add_systems(Startup, start_sources)
-            .add_systems(Update, (ingest, advance, show_frame).chain())
+            .add_systems(Update, (ingest, advance, show_frame, drive_recording).chain().before(ApplyUdpUpdates))
             .add_systems(Update, draw_gizmos.after(show_frame))
             .add_systems(EguiPrimaryContextPass, (timeline_keys, timeline_ui, draw_labels).chain());
     }

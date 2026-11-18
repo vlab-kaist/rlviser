@@ -44,32 +44,47 @@ pub struct ServerPort {
     secondary_port: u16,
 }
 
-/// Splits off the rlviz options (`--replay FILE`, `--rlviz-port PORT`, or a bare path to a
-/// replay file); the remaining positional arguments are the original UDP ports.
-fn parse_args() -> (rlviz::RlvizConfig, Vec<String>) {
+/// Splits off the rlviz options (see `docs/rlviz.md`); the remaining positional arguments are the
+/// original UDP ports. Also returns the window size.
+fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
+    fn value<T: std::str::FromStr>(flag: &str, arg: Option<String>) -> T {
+        arg.and_then(|s| s.parse().ok())
+            .unwrap_or_else(|| panic!("{flag} needs a valid value"))
+    }
+
     let mut config = rlviz::RlvizConfig {
         replay: None,
         port: rlviz::DEFAULT_PORT,
+        record: rlviz::record::RecordConfig::default(),
     };
+    let mut window = None;
     let mut positional = Vec::new();
     let mut args = env::args().skip(1);
 
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--replay" => config.replay = args.next().map(PathBuf::from),
-            "--rlviz-port" => {
-                config.port = args.next().and_then(|s| s.parse().ok()).unwrap_or(rlviz::DEFAULT_PORT);
+            "--rlviz-port" => config.port = value(&arg, args.next()),
+            "--record" => config.record.path = args.next().map(PathBuf::from),
+            "--fps" => config.record.fps = value(&arg, args.next()),
+            "--record-speed" => config.record.speed = value(&arg, args.next()),
+            "--from" => config.record.from = Some(value(&arg, args.next())),
+            "--to" => config.record.to = Some(value(&arg, args.next())),
+            "--window" => {
+                let size: String = value(&arg, args.next());
+                let (w, h) = size.split_once('x').expect("--window WIDTHxHEIGHT");
+                window = Some((w.parse().expect("--window width"), h.parse().expect("--window height")));
             }
             _ if arg.parse::<u16>().is_err() && config.replay.is_none() => config.replay = Some(PathBuf::from(arg)),
             _ => positional.push(arg),
         }
     }
 
-    (config, positional)
+    (config, positional, window)
 }
 
 fn main() {
-    let (rlviz_config, positional) = parse_args();
+    let (rlviz_config, positional, window_size) = parse_args();
     let mut args = positional.into_iter();
 
     // read the first argument and treat it as the port to connect to (u16)
@@ -112,6 +127,7 @@ fn main() {
                     primary_window: Some(Window {
                         title: "RLViser".into(),
                         present_mode: PresentMode::AutoNoVsync,
+                        resolution: window_size.map_or_else(default, |(w, h)| (w, h).into()),
                         ..default()
                     }),
                     ..default()
