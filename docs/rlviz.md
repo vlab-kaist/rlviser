@@ -96,7 +96,10 @@ camera.
   ```
 
   `--from`/`--to` are seconds from the start of the replay. Pick the camera beforehand in the Menu or
-  in `settings.txt` (`camera_state={"TrackCar":1}`, `"Spectator"`, `{"Director":0}`).
+  in `settings.txt` (`camera_state={"TrackCar":1}`, `"Spectator"`, `{"Director":0}`), or place a fixed
+  camera with `--camera X,Y,Z:TX,TY,TZ` (position and look-at point in game coordinates; it switches
+  to the free camera, which `settings.txt` then remembers). For example
+  `--camera -3000,700,1200:0,3900,500` looks from the side at the orange (+y) goal's half.
 
 Recording a live stream captures frames as they are rendered (not game-time exact); record the saved
 replay instead when timing matters.

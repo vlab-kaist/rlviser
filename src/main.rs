@@ -56,6 +56,7 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
         replay: None,
         port: rlviz::DEFAULT_PORT,
         record: rlviz::record::RecordConfig::default(),
+        camera: None,
     };
     let mut window = None;
     let mut positional = Vec::new();
@@ -70,6 +71,16 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
             "--record-speed" => config.record.speed = value(&arg, args.next()),
             "--from" => config.record.from = Some(value(&arg, args.next())),
             "--to" => config.record.to = Some(value(&arg, args.next())),
+            "--camera" => {
+                // X,Y,Z:TX,TY,TZ (position : look-at point, game coordinates)
+                let spec: String = value(&arg, args.next());
+                let point = |s: &str| -> [f32; 3] {
+                    let v: Vec<f32> = s.split(',').map(|x| x.trim().parse().expect("--camera X,Y,Z:TX,TY,TZ")).collect();
+                    v.try_into().expect("--camera X,Y,Z:TX,TY,TZ")
+                };
+                let (pos, target) = spec.split_once(':').expect("--camera X,Y,Z:TX,TY,TZ");
+                config.camera = Some((point(pos), point(target)));
+            }
             "--window" => {
                 let size: String = value(&arg, args.next());
                 let (w, h) = size.split_once('x').expect("--window WIDTHxHEIGHT");

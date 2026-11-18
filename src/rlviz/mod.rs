@@ -18,7 +18,7 @@ use crossbeam_channel::Receiver;
 
 use crate::{
     camera::PrimaryCamera,
-    settings::options::MenuFocused,
+    settings::options::{MenuFocused, Options},
     udp::{ApplyUdpUpdates, ToBevyVec, UdpInjector, UdpUpdate},
 };
 use format::{DrawGroup, Frame, Header, Prim, Rgba};
@@ -32,6 +32,8 @@ pub struct RlvizConfig {
     /// TCP port for live streams (127.0.0.1).
     pub port: u16,
     pub record: record::RecordConfig,
+    /// Fixed camera (position, look-at point) in game coordinates, from `--camera`.
+    pub camera: Option<([f32; 3], [f32; 3])>,
 }
 
 pub const DEFAULT_PORT: u16 = 45300;
@@ -157,6 +159,24 @@ impl LayerToggles {
     fn shown(&self, name: &str) -> bool {
         self.0.get(name).copied().unwrap_or(true)
     }
+}
+
+/// `--camera`: switch to the free camera once, placed and aimed as given. It stays free (and can be
+/// moved) afterwards; the camera keys switch away from it as usual.
+fn place_camera(
+    config: Res<RlvizConfig>,
+    mut options: ResMut<Options>,
+    mut cameras: Query<&mut Transform, With<PrimaryCamera>>,
+    mut done: Local<bool>,
+) {
+    let Some((pos, target)) = config.camera else { return };
+    if *done {
+        return;
+    }
+    let Ok(mut transform) = cameras.single_mut() else { return };
+    *transform = Transform::from_translation(pos.to_bevy()).looking_at(target.to_bevy(), Vec3::Y);
+    options.camera_state = PrimaryCamera::Spectator;
+    *done = true;
 }
 
 fn start_sources(config: Res<RlvizConfig>, mut commands: Commands) {
@@ -571,6 +591,7 @@ impl Plugin for RlvizPlugin {
             .insert_resource(LayerToggles::default())
             .insert_resource(Recording::default())
             .add_systems(Startup, start_sources)
+            .add_systems(Update, place_camera)
             .add_systems(Update, (ingest, advance, show_frame, drive_recording).chain().before(ApplyUdpUpdates))
             .add_systems(Update, draw_gizmos.after(show_frame))
             .add_systems(EguiPrimaryContextPass, (timeline_keys, timeline_ui, draw_labels).chain());
