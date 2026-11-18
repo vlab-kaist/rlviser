@@ -8,6 +8,7 @@
 mod convert;
 pub mod format;
 pub mod record;
+mod solids;
 mod source;
 
 use std::{collections::BTreeMap, path::PathBuf};
@@ -66,6 +67,8 @@ pub struct Timeline {
     shown: Option<usize>,
     /// Start again from the first frame after the end (replays, not live streams).
     looping: bool,
+    /// Bumped whenever a new source replaces the frames (frame indices start over).
+    generation: u64,
 }
 
 impl Default for Timeline {
@@ -85,6 +88,7 @@ impl Default for Timeline {
             follow: false,
             shown: None,
             looping: false,
+            generation: 0,
         }
     }
 }
@@ -128,10 +132,15 @@ impl Timeline {
 
     /// The draw groups in effect at the cursor: for each name, the latest frame at or before it.
     fn active_groups(&self) -> impl Iterator<Item = &DrawGroup> {
+        self.active_groups_at().map(|(_, group)| group)
+    }
+
+    /// Like [`Timeline::active_groups`], with the index of the frame each group comes from.
+    fn active_groups_at(&self) -> impl Iterator<Item = (usize, &DrawGroup)> {
         self.group_frames.iter().filter_map(|(name, indices)| {
             let pos = indices.partition_point(|&i| i <= self.cursor);
-            let frame = &self.frames[*indices.get(pos.checked_sub(1)?)?];
-            frame.draw.iter().find(|g| &g.name == name)
+            let index = *indices.get(pos.checked_sub(1)?)?;
+            Some((index, self.frames[index].draw.iter().find(|g| &g.name == name)?))
         })
     }
 }
@@ -147,6 +156,8 @@ struct Recording {
     cli_started: bool,
     /// The menu's open state before recording hid it.
     menu_was_open: Option<bool>,
+    /// The last frame is captured: stop in the next frame.
+    stop_next: bool,
     status: Option<String>,
 }
 
@@ -205,6 +216,7 @@ fn ingest(rx: Res<SourceRx>, mut timeline: ResMut<Timeline>, mut toggles: ResMut
                     follow: live,
                     speed: timeline.speed,
                     looping: timeline.looping,
+                    generation: timeline.generation + 1,
                     ..Default::default()
                 };
             }
@@ -347,13 +359,18 @@ fn drive_recording(
         }
     }
 
-    if let Some(session) = &mut recording.session {
+    if recording.stop_next {
+        // The last frame was captured in the previous frame; stopping in the same frame would
+        // show the UI again in that capture.
+        recording.stop_next = false;
+        stop_recording(&mut recording, &mut menu);
+        timeline.playing = false;
+    } else if let Some(session) = &mut recording.session {
         session.capture(&mut commands);
         let tick = timeline.frames.get(timeline.cursor).map_or(0, |f| f.tick);
         let at_end = timeline.cursor + 1 >= timeline.frames.len() && !(timeline.live && !timeline.ended);
         if session.end_tick.is_some_and(|end| tick >= end) || at_end || !timeline.playing && !timeline.follow {
-            stop_recording(&mut recording, &mut menu);
-            timeline.playing = false;
+            recording.stop_next = true;
         }
     }
 
@@ -397,10 +414,23 @@ fn draw_gizmos(timeline: Res<Timeline>, toggles: Res<LayerToggles>, mut gizmos: 
                     let tip = (a.distance(b) * 0.25).clamp(5., 40.);
                     gizmos.arrow(a, b, color(*c)).with_tip_length(tip);
                 }
-                Prim::Sphere { c, r, color: col } => {
+                Prim::Sphere { c, r, color: col, fill: false } => {
                     gizmos.sphere(Isometry3d::from_translation(c.to_bevy()), *r, color(*col));
                 }
-                Prim::Text { .. } | Prim::Text2d { .. } => {}
+                Prim::Box { c, size, rot, color: col, fill: false } => {
+                    let (rotation, size) = solids::box_frame(*size, *rot);
+                    gizmos.cube(Transform::from_translation(c.to_bevy()).with_rotation(rotation).with_scale(size), color(*col));
+                }
+                Prim::Mesh { v, tri, color: col, wire: true, .. } => {
+                    for t in tri {
+                        let [a, b, c] = t.map(|i| v.get(i as usize).map(|p| p.to_bevy()));
+                        if let (Some(a), Some(b), Some(c)) = (a, b, c) {
+                            gizmos.linestrip([a, b, c, a], color([0.1, 0.1, 0.1, col[3].max(0.6)]));
+                        }
+                    }
+                }
+                Prim::Sphere { .. } | Prim::Box { .. } | Prim::Mesh { .. } => {} // solids.rs
+                Prim::Text { .. } | Prim::Text2d { .. } | Prim::Unknown => {}
             }
         }
     }
@@ -454,7 +484,8 @@ fn toggle_recording(
     menu: &mut MenuFocused,
 ) {
     if recording.active() {
-        stop_recording(recording, menu);
+        // this frame is already being captured; stop with the next one (see drive_recording)
+        recording.stop_next = true;
     } else {
         let path = record::default_path(config.replay.as_ref());
         start_recording(recording, timeline, menu, path, &config.record, None, false);
@@ -610,6 +641,8 @@ impl Plugin for RlvizPlugin {
             .add_systems(Update, place_camera)
             .add_systems(Update, (ingest, advance, show_frame, drive_recording).chain().before(ApplyUdpUpdates))
             .add_systems(Update, draw_gizmos.after(show_frame))
+            .add_systems(Update, solids::sync_solids.after(show_frame))
+            .init_resource::<solids::Solids>()
             .add_systems(EguiPrimaryContextPass, (timeline_keys, timeline_ui, draw_labels).chain());
     }
 }

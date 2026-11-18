@@ -116,7 +116,7 @@ for the menus. The Menu window has ball cam and graphics settings (saved in `set
 | Module | What |
 |---|---|
 | `rlviz.format` | The stream format: `make_header`, `StreamWriter`, `ReplayWriter`, `read_replay` |
-| `rlviz.draw` | Primitive constructors: `line`, `polyline`, `arrow`, `sphere`, `text`, `text2d`, colors |
+| `rlviz.draw` | Primitive constructors: `line`, `polyline`, `arrow`, `sphere`, `box`, `mesh`, `text`, `text2d`; surface and volume helpers `surface`, `heightfield`, `voxels`; `colormap`, colors |
 | `rlviz.layers` | `Layer`, `DrawContext`, `Annotator` and the built-in layers |
 | `rlviz.sinks` | `LiveSink` (TCP to the viewer, paced to game speed), `FileSink` |
 | `rlviz.sim` | RocketSim fork → frames (`arena_header`, `arena_frame`), `run`, demo agents |
@@ -189,6 +189,26 @@ Layers that need data that is not in the frame (a policy's action distribution, 
 are easiest to run inside your own loop, where that data exists: compute it, then call the layer or
 put the group into `frame["draw"]` yourself before writing the frame.
 
+### Surfaces and volumes
+
+Filled shapes are `mesh` primitives; `rlviz.draw` builds the common ones:
+
+```python
+# a surface through a grid of points (e.g. a parametric surface sampled on u, v)
+draw.surface([[f(u, v) for v in vs] for u in us], color=(1, 1, 1, 0.5))
+# z = h(x, y), colored by another value (blue -> red over vrange)
+draw.heightfield(xs, ys, h, color=(1, 1, 1, 0.6), value=time_to_reach, vrange=(0, 3))
+# a volume as grid cells: only the outer faces are drawn, so a translucent color shows its shape
+draw.voxels(origin, 80, [(i, j, k) for ... if reachable(i, j, k)], color=(0.8, 0.45, 1.0, 0.4))
+# anything else: vertices and triangles, optional per-vertex colors
+draw.mesh(points, triangles, colors=draw.colormap(values))
+draw.box(center, size, rot=car["rot"])          # e.g. a hitbox; fill=True for a solid one
+draw.sphere(center, r, draw.CYAN, fill=True)
+```
+
+Send a large surface or volume only when it changes (return `None` from the layer otherwise): the
+viewer builds the mesh once per group version.
+
 ### Built-in layers
 
 | Name | Shows |
@@ -207,6 +227,8 @@ The rlviz code is in `src/rlviz/`:
 * `source.rs`: reader threads for a file (zstd) and the TCP listener;
 * `convert.rs`: rlviz frame → RLViser's `GameState`;
 * `record.rs`: video recording (screenshots piped to ffmpeg);
+* `solids.rs`: filled primitives (`mesh`, filled `box`/`sphere`) as mesh entities, rebuilt when their
+  group changes;
 * `mod.rs`: the `Timeline` resource, playback, recording control, the timeline/layers UI, gizmo and
   label drawing.
 

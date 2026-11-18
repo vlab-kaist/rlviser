@@ -68,6 +68,15 @@ Primitives (`t` selects the type):
 | `line` | `a`, `b`, `color` | |
 | `polyline` | `pts` (list of points), `color` | |
 | `arrow` | `a`, `b`, `color` | head length from the arrow length |
-| `sphere` | `c`, `r`, `color` | wireframe |
+| `sphere` | `c`, `r`, `color`, `fill` (optional bool) | wireframe; `fill`: shaded solid |
+| `box` | `c`, `size` ([3] full extents along forward, right, up), `color`, `rot` (optional [9], rows forward, right, up as a body's `rot`; default axis-aligned), `fill` (optional) | wireframe; `fill`: shaded solid |
+| `mesh` | `v` (points), `tri` (list of [i, j, k] into `v`), `color`, `colors` (optional, one per point, replaces `color`), `wire` (optional, also draw the edges) | shaded triangles seen from both sides: a surface, or the boundary of a volume |
 | `text` | `pos`, `text`, `color` | label centered above a world point; `\n` for lines |
 | `text2d` | `pos` ([x, y] fractions of the window from the top left), `text`, `color` | |
+
+Alpha below 1 makes `mesh` and filled `box`/`sphere` translucent. Filled primitives are drawn as
+scene meshes, built once per group version, so a large `mesh` (thousands of triangles) is fine
+when the group changes only now and then; resending it every frame rebuilds it every frame.
+
+Viewers skip primitive types they don't know, so new types can be added without a version change.
+(`box`, `mesh` and `fill` were added after the first version of v1; older viewers reject them.)

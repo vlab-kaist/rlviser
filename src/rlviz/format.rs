@@ -128,9 +128,49 @@ pub enum Prim {
     Line { a: V3, b: V3, color: Rgba },
     Polyline { pts: Vec<V3>, color: Rgba },
     Arrow { a: V3, b: V3, color: Rgba },
-    Sphere { c: V3, r: f32, color: Rgba },
+    /// `fill`: a solid (shaded) ball instead of a wireframe one.
+    Sphere {
+        c: V3,
+        r: f32,
+        color: Rgba,
+        #[serde(default)]
+        fill: bool,
+    },
+    /// A box of full extents `size` (along forward, right, up of `rot`), centred at `c`.
+    /// `rot`: rotation matrix rows forward, right, up (as a body's `rot`); default axis-aligned.
+    Box {
+        c: V3,
+        size: V3,
+        #[serde(default)]
+        rot: Option<[f32; 9]>,
+        color: Rgba,
+        #[serde(default)]
+        fill: bool,
+    },
+    /// Shaded triangles: a surface, or the boundary of a volume. `tri` indexes `v`. `colors`
+    /// (one per vertex) replaces `color`, for a value shown over a surface. `wire` also draws the
+    /// edges.
+    Mesh {
+        v: Vec<V3>,
+        tri: Vec<[u32; 3]>,
+        color: Rgba,
+        #[serde(default)]
+        colors: Option<Vec<Rgba>>,
+        #[serde(default)]
+        wire: bool,
+    },
     /// Label anchored at a world position.
     Text { pos: V3, text: String, color: Rgba },
     /// Label at a screen position, fractions of the window size from the top left.
     Text2d { pos: [f32; 2], text: String, color: Rgba },
+    /// A primitive this viewer doesn't know (written for a newer one): skipped.
+    #[serde(other)]
+    Unknown,
+}
+
+impl Prim {
+    /// Drawn as a mesh entity rather than with gizmos.
+    pub const fn is_solid(&self) -> bool {
+        matches!(self, Self::Sphere { fill: true, .. } | Self::Box { fill: true, .. } | Self::Mesh { .. })
+    }
 }
