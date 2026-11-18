@@ -103,6 +103,11 @@ camera.
   camera with `--camera X,Y,Z:TX,TY,TZ` (position and look-at point in game coordinates; it switches
   to the free camera, which `settings.txt` then remembers). For example
   `--camera -3000,700,1200:0,3900,500` looks from the side at the orange (+y) goal's half.
+  `--follow X,Y,Z` instead keeps the free camera at that offset (game coordinates) from the ball,
+  averaged over ±0.75 s around the cursor (stopping at cuts between plays) and kept inside the
+  arena; it is a function of the cursor, so recordings and scrubbing are reproducible. For plays
+  attacking +y, `--follow -1300,-1700,750` looks over the play from behind and to the side. Any
+  other camera key turns it off until `0` (free camera) again.
 
 Recording a live stream captures frames as they are rendered (not game-time exact); record the saved
 replay instead when timing matters.

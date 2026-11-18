@@ -37,6 +37,8 @@ pub struct RlvizConfig {
     pub looping: bool,
     /// Fixed camera (position, look-at point) in game coordinates, from `--camera`.
     pub camera: Option<([f32; 3], [f32; 3])>,
+    /// `--follow`: free camera kept at this offset (game coordinates) from the smoothed ball.
+    pub follow: Option<[f32; 3]>,
 }
 
 pub const DEFAULT_PORT: u16 = 45300;
@@ -193,6 +195,49 @@ fn place_camera(
     *transform = Transform::from_translation(pos.to_bevy()).looking_at(target.to_bevy(), Vec3::Y);
     options.camera_state = PrimaryCamera::Spectator;
     *done = true;
+}
+
+/// Seconds of ball positions (each side of the cursor) averaged into the `--follow` focus.
+const FOLLOW_WINDOW: f64 = 0.75;
+/// A ball jump larger than this between frames is a cut (next play), which the average stops at.
+const FOLLOW_CUT: f32 = 600.;
+
+/// `--follow`: while the free camera is active, keep it at a fixed offset from the ball's position
+/// averaged over the frames around the cursor (a pure function of the cursor, so scrubbing and
+/// recordings are reproducible), clamped inside the arena so walls don't hide the play.
+fn follow_camera(
+    config: Res<RlvizConfig>,
+    timeline: Res<Timeline>,
+    options: Res<Options>,
+    mut cameras: Query<&mut Transform, With<PrimaryCamera>>,
+) {
+    let Some(offset) = config.follow else { return };
+    if options.camera_state != PrimaryCamera::Spectator || timeline.frames.is_empty() {
+        return;
+    }
+    let Ok(mut transform) = cameras.single_mut() else { return };
+    let frames = &timeline.frames;
+    let at = timeline.cursor.min(frames.len() - 1);
+    let span = (FOLLOW_WINDOW * timeline.tick_rate()) as u64;
+    let tick = frames[at].tick;
+    let pos = |i: usize| Vec3::from_array(frames[i].ball.pos);
+    let mut sum = pos(at);
+    let mut n = 1.;
+    let mut i = at;
+    while i > 0 && frames[i - 1].tick + span >= tick && frames[i - 1].tick <= frames[i].tick && pos(i - 1).distance(pos(i)) < FOLLOW_CUT {
+        i -= 1;
+        sum += pos(i);
+        n += 1.;
+    }
+    let mut i = at;
+    while i + 1 < frames.len() && frames[i + 1].tick <= tick + span && frames[i + 1].tick >= frames[i].tick && pos(i + 1).distance(pos(i)) < FOLLOW_CUT {
+        i += 1;
+        sum += pos(i);
+        n += 1.;
+    }
+    let focus = sum / n;
+    let eye = (focus + Vec3::from_array(offset)).clamp(Vec3::new(-3900., -4900., 150.), Vec3::new(3900., 4900., 1900.));
+    *transform = Transform::from_translation(eye.to_array().to_bevy()).looking_at(focus.to_array().to_bevy(), Vec3::Y);
 }
 
 fn start_sources(config: Res<RlvizConfig>, mut timeline: ResMut<Timeline>, mut commands: Commands) {
@@ -638,7 +683,7 @@ impl Plugin for RlvizPlugin {
             .insert_resource(LayerToggles::default())
             .insert_resource(Recording::default())
             .add_systems(Startup, start_sources)
-            .add_systems(Update, place_camera)
+            .add_systems(Update, (place_camera, follow_camera.after(show_frame)))
             .add_systems(Update, (ingest, advance, show_frame, drive_recording).chain().before(ApplyUdpUpdates))
             .add_systems(Update, draw_gizmos.after(show_frame))
             .add_systems(Update, solids::sync_solids.after(show_frame))

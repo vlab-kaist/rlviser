@@ -57,6 +57,7 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
         port: rlviz::DEFAULT_PORT,
         record: rlviz::record::RecordConfig::default(),
         camera: None,
+        follow: None,
         looping: false,
     };
     let mut window = None;
@@ -82,6 +83,14 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
                 };
                 let (pos, target) = spec.split_once(':').expect("--camera X,Y,Z:TX,TY,TZ");
                 config.camera = Some((point(pos), point(target)));
+            }
+            "--follow" => {
+                // X,Y,Z: camera offset from the (smoothed) ball, game coordinates
+                let spec: String = value(&arg, args.next());
+                let v: Vec<f32> = spec.split(',').map(|x| x.trim().parse().expect("--follow X,Y,Z")).collect();
+                config.follow = Some(v.try_into().expect("--follow X,Y,Z"));
+                // starts on the free camera like --camera
+                config.camera.get_or_insert(([0., -3000., 1500.], [0., 0., 0.]));
             }
             "--window" => {
                 let size: String = value(&arg, args.next());
