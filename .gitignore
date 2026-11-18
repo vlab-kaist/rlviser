@@ -11,3 +11,7 @@ settings.txt
 /cache
 /.cargo
 /src/flat.rs
+/python/.venv
+__pycache__/
+*.egg-info/
+*.rlviz

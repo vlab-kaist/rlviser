@@ -22,6 +22,7 @@ include-flate = "0.3.0"
 itertools = "0.14.0"
 itoa = "1.0.15"
 planus = { git = "https://github.com/swz-git/planus", rev = "a0b1fbf" }
+rmp-serde = "1"
 rust_search = "2.1.0"
 rustc-hash = "2.1.2"
 serde = { version = "1.0.160", features = ["derive", "rc"] }
@@ -30,6 +31,7 @@ thiserror = "2.0"
 tracing = { version = "*", features = ["release_max_level_error"] }
 walkdir = "2.3.3"
 zip = "8.0.0"
+zstd = "0.13"
 
 [dependencies.bevy]
 version = "0.18.1"
@@ -41,6 +43,7 @@ features = [
   "bevy_color",
   "bevy_core_pipeline",
   "bevy_gizmos",
+  "bevy_gizmos_render",
   "bevy_image",
   "bevy_input_focus",
   "bevy_light",
@@ -59,7 +62,6 @@ features = [
   "mesh_picking",
   "std",
   "tga",
-  "wayland",
   "x11",
 ]
 

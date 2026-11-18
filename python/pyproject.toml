@@ -1,0 +1,20 @@
+[project]
+name = "rlviz"
+version = "0.1.0"
+description = "Replays, live streams and debug layers for the vlab-kaist rlviser fork"
+requires-python = ">=3.10"
+dependencies = ["msgpack>=1.0", "zstandard>=0.22"]
+
+[project.optional-dependencies]
+# The RocketSim fork (vlab-kaist/RocketSim) is installed separately; see README.md.
+test = ["pytest"]
+
+[project.scripts]
+rlviz = "rlviz.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["rlviz*"]

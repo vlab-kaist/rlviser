@@ -463,7 +463,7 @@ pub struct SpeedUpdate(pub f32);
 #[derive(Message)]
 pub struct PausedUpdate(pub bool);
 
-enum UdpUpdate {
+pub enum UdpUpdate {
     State(GameState),
     AddRender(AddRender),
     RemoveRender(RemoveRender),
@@ -475,6 +475,10 @@ enum UdpUpdate {
 
 #[derive(Resource, Deref)]
 struct UdpUpdateStream(Receiver<UdpUpdate>);
+
+/// Feeds updates into the same stream as the UDP socket (used by rlviz playback).
+#[derive(Resource, Deref)]
+pub struct UdpInjector(Sender<UdpUpdate>);
 
 fn start_udp_send_handler(socket: UdpSocket, out_addr: SocketAddr, outgoing: Receiver<SendableUdp>) {
     let mut builder = planus::Builder::with_capacity(1024);
@@ -516,6 +520,7 @@ fn start_udp_send_handler(socket: UdpSocket, out_addr: SocketAddr, outgoing: Rec
 
 fn start_udp_recv_handler(socket: UdpSocket, commands: &mut Commands) {
     let (tx, rx) = crossbeam_channel::unbounded();
+    commands.insert_resource(UdpInjector(tx.clone()));
 
     thread::spawn(move || {
         let mut packet_size_buffer = [0; 8];

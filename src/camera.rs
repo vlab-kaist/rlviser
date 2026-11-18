@@ -1,7 +1,7 @@
 use std::{f32::consts::PI, time::Duration};
 
 use bevy::{
-    camera::Exposure,
+    camera::{Exposure, visibility::RenderLayers},
     color::palettes::css,
     core_pipeline::tonemapping::Tonemapping,
     light::{CascadeShadowConfigBuilder, DirectionalLightShadowMap, ShadowFilteringMethod, SunDisk, light_consts::lux},
@@ -32,6 +32,10 @@ pub enum PrimaryCamera {
     Director(u64),
     TrackCar(u64),
 }
+
+/// Render layer for 3D gizmos. Only the primary 3D camera sees it; otherwise the 2D (egui/UI)
+/// camera draws every gizmo a second time with its orthographic projection.
+pub const GIZMO_LAYER: usize = 1;
 
 pub const BOOST_INDICATOR_POS: Vec2 = Vec2::new(150., 150.);
 pub const BOOST_INDICATOR_FONT_SIZE: f32 = 60.0;
@@ -80,6 +84,7 @@ fn setup(
         Msaa::default(),
         Spectator,
         MeshPickingCamera,
+        RenderLayers::from_layers(&[0, GIZMO_LAYER]),
         Atmosphere::earthlike(scattering_mediums.add(ScatteringMedium::default())),
         Exposure::SUNLIGHT,
         AtmosphereSettings {

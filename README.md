@@ -1,5 +1,10 @@
 ## RocketSim Visualizer
 
+> **vlab-kaist fork.** Adds **rlviz**: `.rlviz` replay files with a scrubbable timeline, live
+> streaming from a simulation, and named debug draw groups (arrows, lines, spheres, labels), plus a
+> Python package (`python/`) that runs games on the RocketSim fork and computes debug layers.
+> See [`docs/rlviz.md`](docs/rlviz.md) and [`docs/rlviz_format.md`](docs/rlviz_format.md).
+
 [![forthebadge](https://forthebadge.com/images/badges/made-with-rust.svg)](https://forthebadge.com)
 
 A lightweight visualizer for [rocketsim-rs](https://github.com/VirxEC/rocketsim-rs) binds that listens for UDP packets.

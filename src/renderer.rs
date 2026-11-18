@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use rustc_hash::FxHashMap;
 
 use crate::{
+    camera::GIZMO_LAYER,
     flat::rocketsim,
     udp::{ToBevyVec, ToBevyVecFlat},
 };
@@ -35,6 +36,11 @@ fn render_gizmos(renders: Res<RenderGroups>, mut gizmos: Gizmos) {
     }
 }
 
+fn gizmos_on_primary_camera_only(mut config_store: ResMut<GizmoConfigStore>) {
+    let (config, _) = config_store.config_mut::<DefaultGizmoConfigGroup>();
+    config.render_layers = bevy::camera::visibility::RenderLayers::layer(GIZMO_LAYER);
+}
+
 #[derive(Resource)]
 pub struct DoRendering(pub bool);
 
@@ -43,6 +49,7 @@ pub struct UdpRendererPlugin;
 impl Plugin for UdpRendererPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(RenderGroups::default())
+            .add_systems(Startup, gizmos_on_primary_camera_only)
             .insert_resource(DoRendering(true))
             .add_systems(Update, render_gizmos.run_if(|do_rendering: Res<DoRendering>| do_rendering.0));
     }
