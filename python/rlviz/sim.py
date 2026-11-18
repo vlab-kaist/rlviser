@@ -204,9 +204,13 @@ def ball_chase_agent(jump_height: float = 300.0, boost: bool = True):
 
 
 def make_arena(game_mode: str = "soccar", blue: int = 1, orange: int = 1, seed: int | None = None):
-    """An arena with ``blue`` + ``orange`` Octanes at a kickoff position."""
+    """An arena with ``blue`` + ``orange`` Octanes at a kickoff position.
+
+    Ball rotation is simulated (RocketSim skips it by default, ``no_ball_rot=True``, and then the
+    ball's ``rot`` stays the identity, so the ball would not spin in the viewer).
+    """
     init()
-    arena = rs.Arena(getattr(rs.GameMode, game_mode.upper()))
+    arena = rs.Arena(getattr(rs.GameMode, game_mode.upper()), config=rs.ArenaConfig(no_ball_rot=False))
     for _ in range(blue):
         arena.add_car(rs.Team.BLUE)
     for _ in range(orange):

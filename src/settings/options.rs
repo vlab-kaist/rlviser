@@ -68,7 +68,8 @@ impl Default for Options {
             mouse_sensitivity: 1.,
             allow_rendering: true,
             packet_smoothing: 1,
-            calc_ball_rot: true,
+            // rlviz: replays carry the ball rotation (`rlviz.sim` simulates it), so use it
+            calc_ball_rot: false,
         }
     }
 }
@@ -207,7 +208,7 @@ pub struct MenuFocused(pub bool);
 impl Default for MenuFocused {
     #[inline]
     fn default() -> Self {
-        Self(true)
+        Self(false)
     }
 }
 

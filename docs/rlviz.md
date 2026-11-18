@@ -139,6 +139,10 @@ finally:
         s.close()
 ```
 
+RocketSim does not simulate the ball's rotation unless the arena is created with
+`ArenaConfig(no_ball_rot=False)` (`sim.make_arena` does this). With the default the ball's `rot` stays
+the identity and the ball does not spin in the viewer, which uses the rotation in the frames as is.
+
 To record from other code (for example the training repo's evaluation), build frames with
 `sim.arena_frame(arena)` (or by hand, see the format doc) and write them with `ReplayWriter`.
 Frames can be written every tick or with a stride; the viewer plays them by tick number.
@@ -209,7 +213,8 @@ Changes to upstream files are small and marked in the history: the `bevy_gizmos_
 Bevy 0.18 gizmos need it to be drawn at all), gizmos limited to the 3D camera, the `wayland` feature
 dropped (no wayland headers on v2), `UdpInjector` and `UdpUpdate::Snap` (show a state exactly, without
 interpolating from the previous one; used for seeking and recording), the `ApplyUdpUpdates` system set,
-and the command line options in `main.rs`.
+`calc_ball_rot` off by default (use the ball rotation from the frames), and the command line options
+in `main.rs`.
 
 Keep RL-specific logic out of the viewer: anything that needs to know what a policy, a reward or a
 plan is belongs in a Python layer. The viewer should only learn new generic primitives.
