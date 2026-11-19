@@ -242,7 +242,8 @@ example match with two Psyonix bots is `/mnt/hdd0/rlbot-shared/rlviz/match.toml`
 
     RLBOT_AGENT_ID=vlab/rlviz python -m rlviz.rlbot [--layers car_info,vectors.vel] [--out game.rlviz]
 
-`--out` also saves the real game as a replay for the viewer. A bot can call `packet_frame`,
+`--out` also saves the real game as a replay for the viewer. Checked in the game on v2 (2026-11-19):
+labels, vectors and the ball prediction all show. A bot can call `packet_frame`,
 `render_messages` and `group_id` itself to draw its own layers.
 
 ## Viewer internals
