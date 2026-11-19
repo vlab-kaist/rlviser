@@ -224,6 +224,27 @@ viewer builds the mesh once per group version.
 | `vectors.angvel` | Angular velocity axis (purple, 40 uu per rad/s) |
 | `car_info` | Label above each car: name, boost, ground/air, J/DJ/F (jumped, double jumped, flipped), SS (supersonic), B (boosting) |
 
+## In the real game (RLBot v5)
+
+`rlviz.rlbot` runs the same layers on RLBot game packets and draws them in Rocket League with
+RLBot's renderer (needs `pip install rlbot`; tested against `rlbot` 2.0.0b56). Packets become rlviz
+frames (`packet_frame`, car ids = player index + 1, car body chosen by the closest hitbox), the
+layers add their groups, and each changed group is sent as one RLBot render group (`rlviz:<name>`).
+
+RLBot only draws lines, polylines and text (rectangles are screen-sized), so: `arrow` gets a
+two-line head, `sphere` becomes three circles, `box` its 12 edges, `mesh` its outline (all edges
+with `wire`, at most 2000), `fill` is ignored and filled surfaces can't be shown.
+
+The match config must list the script (`[[scripts]]` with agent id `vlab/rlviz`) and allow
+rendering (`enable_rendering = "OnByDefault"`; with `"OffByDefault"` the script asks for it). An
+example match with two Psyonix bots is `/mnt/hdd0/rlbot-shared/rlviz/match.toml` (shared so the
+`vlab` account running RLBotServer can read it). Then
+
+    RLBOT_AGENT_ID=vlab/rlviz python -m rlviz.rlbot [--layers car_info,vectors.vel] [--out game.rlviz]
+
+`--out` also saves the real game as a replay for the viewer. A bot can call `packet_frame`,
+`render_messages` and `group_id` itself to draw its own layers.
+
 ## Viewer internals
 
 The rlviz code is in `src/rlviz/`:
