@@ -3,6 +3,7 @@
     rlviz demo [--live] [--out game.rlviz] [--seconds 60] [--mode soccar] [--layers ...]
     rlviz annotate in.rlviz out.rlviz [--layers ...]
     rlviz info game.rlviz
+    rlviz video plays.rlviz plays.mp4 [--speed 0.35] [--labels "alone|vs bot 1"]
 """
 
 from __future__ import annotations
@@ -104,6 +105,20 @@ def main(argv=None) -> None:
     p = sub.add_parser("info", help="summarize a replay")
     p.add_argument("input")
     p.set_defaults(fn=cmd_info)
+
+    from . import video
+
+    p = sub.add_parser("video", help="record a replay's runs (split at tick gaps) into one tiled mp4")
+    p.add_argument("input")
+    p.add_argument("output")
+    p.add_argument("--speed", type=float, default=0.35, help="game seconds per video second")
+    p.add_argument("--follow", default="-1300,-1700,750", help="camera offset from the ball (X,Y,Z)")
+    p.add_argument("--follow-team", type=int, help="also keep this team's car nearest the ball in view")
+    p.add_argument("--fps", type=int, default=30)
+    p.add_argument("--labels", help="'|'-separated label per run (default 'run k/n')")
+    p.add_argument("--viewer", default=str(video.VIEWER))
+    p.add_argument("--display", help="X display to render on (default $DISPLAY, else :99)")
+    p.set_defaults(fn=video.main)
 
     args = parser.parse_args(argv)
     args.fn(args)

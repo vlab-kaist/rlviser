@@ -107,7 +107,15 @@ camera.
   averaged over ±0.75 s around the cursor (stopping at cuts between plays) and kept inside the
   arena; it is a function of the cursor, so recordings and scrubbing are reproducible. For plays
   attacking +y, `--follow -1300,-1700,750` looks over the play from behind and to the side. Any
-  other camera key turns it off until `0` (free camera) again.
+  other camera key turns it off until `0` (free camera) again. `--follow-team T` also keeps team T's
+  car nearest to the ball in view: the camera looks at their midpoint, and the offset grows when they
+  are more than 1500 uu apart (cars parked below the floor, z < -500, are ignored).
+* **Several runs of one start, tiled**: `rlviz video plays.rlviz plays.mp4 [--speed 0.35]
+  [--follow-team 0] [--labels "alone|vs bot 1"]` splits the replay wherever the tick doesn't advance by
+  one (writers put runs one after the other with a gap), records each run headless with the follow
+  camera, and tiles them (two side by side, more in a 2-column grid), all starting together and each
+  holding its last frame. A run's last frame is skipped if it only clears the drawings. Renders on
+  `$DISPLAY` (default `:99`, a virtual display such as Xvfb works).
 
 Recording a live stream captures frames as they are rendered (not game-time exact); record the saved
 replay instead when timing matters.

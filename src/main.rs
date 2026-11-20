@@ -58,6 +58,7 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
         record: rlviz::record::RecordConfig::default(),
         camera: None,
         follow: None,
+        follow_team: None,
         looping: false,
     };
     let mut window = None;
@@ -92,6 +93,7 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
                 // starts on the free camera like --camera
                 config.camera.get_or_insert(([0., -3000., 1500.], [0., 0., 0.]));
             }
+            "--follow-team" => config.follow_team = Some(value(&arg, args.next())),
             "--window" => {
                 let size: String = value(&arg, args.next());
                 let (w, h) = size.split_once('x').expect("--window WIDTHxHEIGHT");

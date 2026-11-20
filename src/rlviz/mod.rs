@@ -39,6 +39,8 @@ pub struct RlvizConfig {
     pub camera: Option<([f32; 3], [f32; 3])>,
     /// `--follow`: free camera kept at this offset (game coordinates) from the smoothed ball.
     pub follow: Option<[f32; 3]>,
+    /// `--follow-team`: also keep the car of this team nearest to the ball in view.
+    pub follow_team: Option<u8>,
 }
 
 pub const DEFAULT_PORT: u16 = 45300;
@@ -201,10 +203,15 @@ fn place_camera(
 const FOLLOW_WINDOW: f64 = 0.75;
 /// A ball jump larger than this between frames is a cut (next play), which the average stops at.
 const FOLLOW_CUT: f32 = 600.;
+/// `--follow-team`: ball-to-car distance that fits at the plain `--follow` offset; farther apart, the
+/// offset is scaled up by distance / this.
+const FOLLOW_FIT: f32 = 1500.;
 
 /// `--follow`: while the free camera is active, keep it at a fixed offset from the ball's position
 /// averaged over the frames around the cursor (a pure function of the cursor, so scrubbing and
 /// recordings are reproducible), clamped inside the arena so walls don't hide the play.
+/// With `--follow-team`, the focus is the midpoint of the ball and that team's car nearest to it
+/// (cars parked below the floor are skipped), and the offset grows with their distance so both fit.
 fn follow_camera(
     config: Res<RlvizConfig>,
     timeline: Res<Timeline>,
@@ -217,26 +224,46 @@ fn follow_camera(
     }
     let Ok(mut transform) = cameras.single_mut() else { return };
     let frames = &timeline.frames;
+    let team_ids: Vec<u64> = match (config.follow_team, &timeline.header) {
+        (Some(team), Some(header)) => header.cars.iter().filter(|c| c.team == team).map(|c| c.id).collect(),
+        _ => Vec::new(),
+    };
+    // (focus, ball-to-car distance) of one frame
+    let point = |i: usize| -> (Vec3, f32) {
+        let ball = Vec3::from_array(frames[i].ball.pos);
+        let car = frames[i]
+            .cars
+            .iter()
+            .filter(|c| team_ids.contains(&c.id) && !c.demoed && c.body.pos[2] > -500.)
+            .map(|c| Vec3::from_array(c.body.pos))
+            .min_by(|a, b| a.distance(ball).total_cmp(&b.distance(ball)));
+        car.map_or((ball, 0.), |car| ((ball + car) / 2., ball.distance(car)))
+    };
+    let ball = |i: usize| Vec3::from_array(frames[i].ball.pos);
     let at = timeline.cursor.min(frames.len() - 1);
     let span = (FOLLOW_WINDOW * timeline.tick_rate()) as u64;
     let tick = frames[at].tick;
-    let pos = |i: usize| Vec3::from_array(frames[i].ball.pos);
-    let mut sum = pos(at);
+    let (mut sum, mut spread) = point(at);
     let mut n = 1.;
     let mut i = at;
-    while i > 0 && frames[i - 1].tick + span >= tick && frames[i - 1].tick <= frames[i].tick && pos(i - 1).distance(pos(i)) < FOLLOW_CUT {
+    while i > 0 && frames[i - 1].tick + span >= tick && frames[i - 1].tick <= frames[i].tick && ball(i - 1).distance(ball(i)) < FOLLOW_CUT {
         i -= 1;
-        sum += pos(i);
+        let (p, d) = point(i);
+        sum += p;
+        spread += d;
         n += 1.;
     }
     let mut i = at;
-    while i + 1 < frames.len() && frames[i + 1].tick <= tick + span && frames[i + 1].tick >= frames[i].tick && pos(i + 1).distance(pos(i)) < FOLLOW_CUT {
+    while i + 1 < frames.len() && frames[i + 1].tick <= tick + span && frames[i + 1].tick >= frames[i].tick && ball(i + 1).distance(ball(i)) < FOLLOW_CUT {
         i += 1;
-        sum += pos(i);
+        let (p, d) = point(i);
+        sum += p;
+        spread += d;
         n += 1.;
     }
     let focus = sum / n;
-    let eye = (focus + Vec3::from_array(offset)).clamp(Vec3::new(-3900., -4900., 150.), Vec3::new(3900., 4900., 1900.));
+    let scale = (spread / n / FOLLOW_FIT).max(1.);
+    let eye = (focus + Vec3::from_array(offset) * scale).clamp(Vec3::new(-3900., -4900., 150.), Vec3::new(3900., 4900., 1900.));
     *transform = Transform::from_translation(eye.to_array().to_bevy()).looking_at(focus.to_array().to_bevy(), Vec3::Y);
 }
 
@@ -304,8 +331,11 @@ fn advance(time: Res<Time>, recording: Res<Recording>, mut timeline: ResMut<Time
     };
     let target = timeline.frames[timeline.cursor].tick as f64 + timeline.clock * tick_rate;
 
+    // A recording with an end never moves past it, whatever order this runs in relative to the
+    // capture (the frame after the end can be a different run, or one that clears the drawings).
+    let end = recording.session.as_ref().and_then(|s| s.end_tick).unwrap_or(u64::MAX);
     let mut cursor = timeline.cursor;
-    while cursor + 1 < timeline.frames.len() && timeline.frames[cursor + 1].tick as f64 <= target {
+    while cursor + 1 < timeline.frames.len() && timeline.frames[cursor + 1].tick as f64 <= target && timeline.frames[cursor + 1].tick <= end {
         cursor += 1;
     }
     if cursor != timeline.cursor {
