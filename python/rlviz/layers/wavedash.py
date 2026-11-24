@@ -121,12 +121,7 @@ class WaveDash(Layer):
             prev = ctx.prev_car(car["id"]) if ctx.prev is not None and tick == ctx.prev["tick"] + 1 else None
             on_ground, flipped = car.get("on_ground", True), car.get("flipped", False)
             controls = car.get("controls")
-            press, last, z = bool(controls) and controls[5] > 0.5, st.last, car["pos"][2]
-            if last is not None and last.cycle is None:  # what follows the latest landing
-                if press and not st.press and last.jump_ticks is None:
-                    last.jump_ticks, last.press_z = tick - last.tick, z
-                if last.press_z is not None:
-                    last.apex = max(last.apex or 0.0, z - last.press_z)
+            press, z = bool(controls) and controls[5] > 0.5, car["pos"][2]
             if not on_ground:
                 if not st.air:
                     st.air, st.dodge_tick, st.path = True, None, []
@@ -151,6 +146,13 @@ class WaveDash(Layer):
                 self.air_landings += 1
                 self.wavedashes += self.is_wavedash(landing)
                 st.dodge_tick, st.path = None, []
+            last = st.last
+            if last is not None and last.cycle is None:  # what follows the latest landing (from its own frame on,
+                # whose controls are applied on the step after landing: a press there is a 0-tick jump)
+                if press and not st.press and last.jump_ticks is None:
+                    last.jump_ticks, last.press_z = tick - last.tick, z
+                if last.press_z is not None:
+                    last.apex = max(last.apex or 0.0, z - last.press_z)
             st.flipped, st.press = flipped, press
             for landing in self.landings:
                 if landing.car_id == car["id"] and landing.speed_after is None \

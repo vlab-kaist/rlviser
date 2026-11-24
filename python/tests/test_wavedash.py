@@ -32,3 +32,11 @@ def test_landing_to_press_and_hop():
         f["cars"][0]["controls"][5] = 1.0  # pressed at tick 8
     found = landings(header, frames)
     assert (found[0].tick, found[0].jump_ticks, found[0].apex, found[0].cycle) == (5, 3, 20.0, 9)
+
+
+def test_press_on_landing_frame_is_zero_ticks():
+    header = {"tick_rate": 120.0, "cars": [{"id": 1, "team": 0}]}
+    frames = [_frame(t, 100, False, False, 1000) for t in range(5)] + [_frame(t, 20, True, False, 1000) for t in range(5, 8)]
+    for f in frames[5:]:
+        f["cars"][0]["controls"][5] = 1.0
+    assert landings(header, frames)[0].jump_ticks == 0
