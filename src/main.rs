@@ -59,6 +59,7 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
         camera: None,
         follow: None,
         follow_team: None,
+        follow_car: None,
         looping: false,
     };
     let mut window = None;
@@ -94,6 +95,7 @@ fn parse_args() -> (rlviz::RlvizConfig, Vec<String>, Option<(u32, u32)>) {
                 config.camera.get_or_insert(([0., -3000., 1500.], [0., 0., 0.]));
             }
             "--follow-team" => config.follow_team = Some(value(&arg, args.next())),
+            "--follow-car" => config.follow_car = Some(value(&arg, args.next())),
             "--window" => {
                 let size: String = value(&arg, args.next());
                 let (w, h) = size.split_once('x').expect("--window WIDTHxHEIGHT");

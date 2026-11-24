@@ -5,6 +5,7 @@ from .ball_prediction import BallPrediction
 from .base import Annotator, DrawContext, Layer
 from .car_info import CarInfo
 from .vectors import Vectors
+from .wavedash import WaveDash
 
 #: Name -> factory, for ``--layers`` on the command line.
 LAYERS = {
@@ -13,6 +14,7 @@ LAYERS = {
     "vectors.acc": lambda: Vectors("acc"),
     "vectors.angvel": lambda: Vectors("angvel"),
     "car_info": CarInfo,
+    "wavedash": WaveDash,
 }
 
 DEFAULT_LAYERS = ("ball_prediction", "vectors.vel", "vectors.acc", "vectors.angvel", "car_info")
@@ -26,4 +28,4 @@ def make_layers(names) -> list[Layer]:
 
 
 __all__ = ["Annotator", "BallPrediction", "CarInfo", "DrawContext", "Layer", "LAYERS", "DEFAULT_LAYERS",
-           "Vectors", "make_layers"]
+           "Vectors", "WaveDash", "make_layers"]

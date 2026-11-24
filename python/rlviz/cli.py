@@ -3,7 +3,7 @@
     rlviz demo [--live] [--out game.rlviz] [--seconds 60] [--mode soccar] [--layers ...]
     rlviz annotate in.rlviz out.rlviz [--layers ...]
     rlviz info game.rlviz
-    rlviz video plays.rlviz plays.mp4 [--speed 0.35] [--labels "alone|vs bot 1"]
+    rlviz video plays.rlviz plays.mp4 [--speed 0.35] [--labels "alone|vs bot 1"] [--sequence] [--slow-wavedash]
 """
 
 from __future__ import annotations
@@ -114,8 +114,15 @@ def main(argv=None) -> None:
     p.add_argument("--speed", type=float, default=0.35, help="game seconds per video second")
     p.add_argument("--follow", default="-1300,-1700,750", help="camera offset from the ball (X,Y,Z)")
     p.add_argument("--follow-team", type=int, help="also keep this team's car nearest the ball in view")
+    p.add_argument("--follow-car", type=int,
+                   help="follow this car id instead, the offset turned with the car-to-ball direction")
     p.add_argument("--fps", type=int, default=30)
     p.add_argument("--labels", help="'|'-separated label per run (default 'run k/n')")
+    p.add_argument("--sequence", action="store_true", help="play the runs one after the other instead of tiling")
+    p.add_argument("--slow-wavedash", action="store_true",
+                   help="slow down around each landing after a dodge (the wavedash layer's landings)")
+    p.add_argument("--slow-speed", type=float, default=0.25, help="speed of the slowed parts")
+    p.add_argument("--slow-window", type=float, default=0.3, help="game seconds slowed on each side")
     p.add_argument("--viewer", default=str(video.VIEWER))
     p.add_argument("--display", help="X display to render on (default $DISPLAY, else :99)")
     p.set_defaults(fn=video.main)

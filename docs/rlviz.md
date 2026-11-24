@@ -110,12 +110,20 @@ camera.
   other camera key turns it off until `0` (free camera) again. `--follow-team T` also keeps team T's
   car nearest to the ball in view: the camera looks at their midpoint, and the offset grows when they
   are more than 1500 uu apart (cars parked below the floor, z < -500, are ignored).
+  `--follow-car ID` follows that car instead of the ball, with the offset turned so +x points from the
+  car to the ball (y left, z up): `--follow 0,-900,250 --follow-car 1` watches the car from its side
+  as it drives at the ball.
 * **Several runs of one start, tiled**: `rlviz video plays.rlviz plays.mp4 [--speed 0.35]
   [--follow-team 0] [--labels "alone|vs bot 1"]` splits the replay wherever the tick doesn't advance by
   one (writers put runs one after the other with a gap), records each run headless with the follow
   camera, and tiles them (two side by side, more in a 2-column grid), all starting together and each
   holding its last frame. A run's last frame is skipped if it only clears the drawings. Renders on
   `$DISPLAY` (default `:99`, a virtual display such as Xvfb works).
+* **Many short runs, one after the other, slowed at moments**: `--sequence` chains the runs instead of
+  tiling them. `--slow-wavedash` finds the landings after a dodge (the `wavedash` layer) and records at
+  `--slow-speed` (0.25), keeping it slow for `--slow-window` (0.3) game seconds on each side of each
+  landing and playing the rest at `--speed`, with a "slow 0.25x" mark:
+  `rlviz video ep.rlviz ep.mp4 --sequence --speed 1 --slow-wavedash --follow 0,-900,250 --follow-car 1`.
 
 Recording a live stream captures frames as they are rendered (not game-time exact); record the saved
 replay instead when timing matters.
@@ -231,6 +239,7 @@ viewer builds the mesh once per group version.
 | `vectors.acc` | Acceleration (finite difference between frames, red, clamped to 600 uu) |
 | `vectors.angvel` | Angular velocity axis (purple, 40 uu per rad/s) |
 | `car_info` | Label above each car: name, boost, ground/air, J/DJ/F (jumped, double jumped, flipped), SS (supersonic), B (boosting) |
+| `wavedash` | Landings after a dodge, from frame fields only (also works on real-game recordings): dodge point, path to the landing, dodge->landing ticks (wave dash if at most 30), nose angle at contact, ground speed and speed toward the ball before the dodge -> 3 ticks after landing; counter of wave dashes / air landings |
 
 ## In the real game (RLBot v5)
 

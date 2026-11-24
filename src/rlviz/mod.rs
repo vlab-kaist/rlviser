@@ -41,6 +41,9 @@ pub struct RlvizConfig {
     pub follow: Option<[f32; 3]>,
     /// `--follow-team`: also keep the car of this team nearest to the ball in view.
     pub follow_team: Option<u8>,
+    /// `--follow-car`: follow this car instead of the ball, the offset turned so +x points from the car
+    /// to the ball (x toward the ball, y left, z up).
+    pub follow_car: Option<u64>,
 }
 
 pub const DEFAULT_PORT: u16 = 45300;
@@ -212,6 +215,8 @@ const FOLLOW_FIT: f32 = 1500.;
 /// recordings are reproducible), clamped inside the arena so walls don't hide the play.
 /// With `--follow-team`, the focus is the midpoint of the ball and that team's car nearest to it
 /// (cars parked below the floor are skipped), and the offset grows with their distance so both fit.
+/// With `--follow-car`, the focus is that car and the offset turns with the car-to-ball direction, so
+/// e.g. `0,-900,250` watches the car from its side as it drives at the ball.
 fn follow_camera(
     config: Res<RlvizConfig>,
     timeline: Res<Timeline>,
@@ -229,8 +234,12 @@ fn follow_camera(
         _ => Vec::new(),
     };
     // (focus, ball-to-car distance) of one frame
+    let car_pos = |i: usize, id: u64| frames[i].cars.iter().find(|c| c.id == id).map(|c| Vec3::from_array(c.body.pos));
     let point = |i: usize| -> (Vec3, f32) {
         let ball = Vec3::from_array(frames[i].ball.pos);
+        if let Some(car) = config.follow_car.and_then(|id| car_pos(i, id)) {
+            return (car, 0.);
+        }
         let car = frames[i]
             .cars
             .iter()
@@ -240,30 +249,42 @@ fn follow_camera(
         car.map_or((ball, 0.), |car| ((ball + car) / 2., ball.distance(car)))
     };
     let ball = |i: usize| Vec3::from_array(frames[i].ball.pos);
+    // car-to-ball direction on the floor, summed over the window (--follow-car)
+    let heading = |i: usize| config.follow_car.and_then(|id| car_pos(i, id)).map_or(Vec3::ZERO, |car| (ball(i) - car).with_z(0.).normalize_or_zero());
+    let same_play = |a: usize, b: usize| ball(a).distance(ball(b)) < FOLLOW_CUT && point(a).0.distance(point(b).0) < FOLLOW_CUT;
     let at = timeline.cursor.min(frames.len() - 1);
     let span = (FOLLOW_WINDOW * timeline.tick_rate()) as u64;
     let tick = frames[at].tick;
     let (mut sum, mut spread) = point(at);
+    let mut dir = heading(at);
     let mut n = 1.;
     let mut i = at;
-    while i > 0 && frames[i - 1].tick + span >= tick && frames[i - 1].tick <= frames[i].tick && ball(i - 1).distance(ball(i)) < FOLLOW_CUT {
+    while i > 0 && frames[i - 1].tick + span >= tick && frames[i - 1].tick <= frames[i].tick && same_play(i - 1, i) {
         i -= 1;
         let (p, d) = point(i);
+        dir += heading(i);
         sum += p;
         spread += d;
         n += 1.;
     }
     let mut i = at;
-    while i + 1 < frames.len() && frames[i + 1].tick <= tick + span && frames[i + 1].tick >= frames[i].tick && ball(i + 1).distance(ball(i)) < FOLLOW_CUT {
+    while i + 1 < frames.len() && frames[i + 1].tick <= tick + span && frames[i + 1].tick >= frames[i].tick && same_play(i + 1, i) {
         i += 1;
         let (p, d) = point(i);
+        dir += heading(i);
         sum += p;
         spread += d;
         n += 1.;
     }
     let focus = sum / n;
     let scale = (spread / n / FOLLOW_FIT).max(1.);
-    let eye = (focus + Vec3::from_array(offset) * scale).clamp(Vec3::new(-3900., -4900., 150.), Vec3::new(3900., 4900., 1900.));
+    let mut offset = Vec3::from_array(offset);
+    if config.follow_car.is_some() {
+        let x = dir.normalize_or(Vec3::Y);
+        let y = Vec3::new(-x.y, x.x, 0.);
+        offset = x * offset.x + y * offset.y + Vec3::Z * offset.z;
+    }
+    let eye = (focus + offset * scale).clamp(Vec3::new(-3900., -4900., 150.), Vec3::new(3900., 4900., 1900.));
     *transform = Transform::from_translation(eye.to_array().to_bevy()).looking_at(focus.to_array().to_bevy(), Vec3::Y);
 }
 
