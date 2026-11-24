@@ -239,7 +239,7 @@ viewer builds the mesh once per group version.
 | `vectors.acc` | Acceleration (finite difference between frames, red, clamped to 600 uu) |
 | `vectors.angvel` | Angular velocity axis (purple, 40 uu per rad/s) |
 | `car_info` | Label above each car: name, boost, ground/air, J/DJ/F (jumped, double jumped, flipped), SS (supersonic), B (boosting) |
-| `wavedash` | Landings after a dodge, from frame fields only (also works on real-game recordings): dodge point, path to the landing, dodge->landing ticks (wave dash if at most 30), nose angle at contact, ground speed and speed toward the ball before the dodge -> 3 ticks after landing; counter of wave dashes / air landings |
+| `wavedash` | Landings after a dodge, from frame fields only (also works on real-game recordings): dodge point, path to the landing, dodge->landing ticks (wave dash if at most 30), nose angle at contact, ground speed and speed toward the ball before the dodge -> 3 ticks after landing, then ticks to the next jump, hop apex and ticks to the next landing (full label on the latest 2 landings only); counter of wave dashes / air landings |
 
 ## In the real game (RLBot v5)
 

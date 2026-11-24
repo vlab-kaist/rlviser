@@ -8,7 +8,11 @@ dodge started at most ``max_ticks`` before it is a wave dash.
 Drawn for each landing of the current run: the dodge point (orange), the car's path from there to the
 landing (yellow for a wave dash, grey otherwise) and a label at the landing point: dodge -> landing
 ticks, the nose angle at contact (+ nose up), and the ground speed and the speed toward the ball from
-just before the dodge to ``after_ticks`` after the landing. While a dodge is in the air, the car shows
+just before the dodge to ``after_ticks`` after the landing. Once known, the label also gets what
+followed the landing: ticks to the next jump (``jumped`` turning on), the height of that hop's apex
+above the lowest point on the ground, and the cycle length (ticks to the next landing). Only the
+latest ``full_labels`` landings keep the full label; older ones are shortened, so chained dashes
+stay readable. While a dodge is in the air, the car shows
 how many ticks ago it dodged. A 2D line counts the wave dashes and air landings so far. Markers are
 cleared when a new run starts (the tick does not advance by one).
 """
@@ -62,6 +66,10 @@ class Landing:
     toward_before: float = 0.0
     speed_after: float | None = None
     toward_after: float | None = None
+    ground_z: float | None = None
+    jump_ticks: int | None = None
+    apex: float | None = None
+    cycle: int | None = None
 
     def ticks(self) -> int | None:
         return None if self.dodge_tick is None else self.tick - self.dodge_tick
@@ -76,14 +84,17 @@ class _Car:
     dodge_dir: str = ""
     before: tuple = (0.0, 0.0)
     path: list = field(default_factory=list)
+    jumped: bool = False
+    last: Landing | None = None
 
 
 class WaveDash(Layer):
     name = "wavedash"
 
-    def __init__(self, max_ticks: int = 30, after_ticks: int = 3):
+    def __init__(self, max_ticks: int = 30, after_ticks: int = 3, full_labels: int = 2):
         self.max_ticks = max_ticks
         self.after_ticks = after_ticks
+        self.full_labels = full_labels
         self.reset()
 
     def reset(self) -> None:
@@ -109,6 +120,14 @@ class WaveDash(Layer):
             st = self.cars.setdefault(car["id"], _Car(air=not car.get("on_ground", True)))
             prev = ctx.prev_car(car["id"]) if ctx.prev is not None and tick == ctx.prev["tick"] + 1 else None
             on_ground, flipped = car.get("on_ground", True), car.get("flipped", False)
+            jumped, last, z = car.get("jumped", False), st.last, car["pos"][2]
+            if last is not None and last.cycle is None:  # what follows the latest landing
+                if on_ground and last.jump_ticks is None:
+                    last.ground_z = z if last.ground_z is None else min(last.ground_z, z)
+                if jumped and not st.jumped and last.jump_ticks is None:
+                    last.jump_ticks = tick - last.tick
+                if last.jump_ticks is not None and last.ground_z is not None:
+                    last.apex = max(last.apex or 0.0, z - last.ground_z)
             if not on_ground:
                 if not st.air:
                     st.air, st.dodge_tick, st.path = True, None, []
@@ -125,32 +144,41 @@ class WaveDash(Layer):
                 st.air = False
                 landing = Landing(car["id"], tick, list(car["pos"]), st.path + [list(car["pos"])], st.dodge_tick,
                                   st.dodge_pos, st.dodge_dir, _nose(car), *st.before)
+                if st.last is not None and st.last.cycle is None:
+                    st.last.cycle = tick - st.last.tick
+                st.last = landing
+                landing.ground_z = z
                 self.landings.append(landing)
                 self.all.append(landing)
                 self.air_landings += 1
                 self.wavedashes += self.is_wavedash(landing)
                 st.dodge_tick, st.path = None, []
-            st.flipped = flipped
+            st.flipped, st.jumped = flipped, jumped
             for landing in self.landings:
                 if landing.car_id == car["id"] and landing.speed_after is None \
                         and tick - landing.tick >= self.after_ticks:
                     landing.speed_after, landing.toward_after = _ground_speed(car), _toward_ball(car, ball)
 
-        for landing in self.landings:
-            prims += self._landing_prims(landing)
+        for k, landing in enumerate(self.landings):
+            prims += self._landing_prims(landing, full=k >= len(self.landings) - self.full_labels)
         prims.append(draw.text2d(0.01, 0.92, f"wave dashes {self.wavedashes} / air landings {self.air_landings}",
                                  draw.YELLOW))
         return prims
 
-    def _landing_prims(self, landing: Landing) -> list[dict]:
+    def _landing_prims(self, landing: Landing, full: bool = True) -> list[dict]:
         wave = self.is_wavedash(landing)
         color = draw.YELLOW if wave else GREY
         prims = [draw.sphere(landing.pos, 40, draw.WHITE)]
         if landing.dodge_pos is not None:
             prims.append(draw.sphere(landing.dodge_pos, 30, draw.ORANGE))
-            prims.append(draw.text(landing.dodge_pos, f"dodge ({landing.dodge_dir})", draw.ORANGE))
+            if full:
+                prims.append(draw.text(landing.dodge_pos, f"dodge ({landing.dodge_dir})", draw.ORANGE))
             if len(landing.path) > 1:
                 prims.append(draw.polyline(landing.path, color))
+        if not full:
+            short = f"WD {landing.ticks()}t" if wave else "landing"
+            prims.append(draw.text([landing.pos[0], landing.pos[1], landing.pos[2] + 60], short, color))
+            return prims
         if wave:
             head = f"WAVE DASH  dodge->land {landing.ticks()} ticks"
         elif landing.dodge_tick is not None:
@@ -161,6 +189,15 @@ class WaveDash(Layer):
         if landing.speed_after is not None:
             lines.append(f"speed {landing.speed_before:.0f} -> {landing.speed_after:.0f}"
                          f"  toward ball {landing.toward_after - landing.toward_before:+.0f}")
+        after = []
+        if landing.jump_ticks is not None:
+            after.append(f"jump +{landing.jump_ticks} ticks")
+        if landing.apex is not None and landing.cycle is not None:
+            after.append(f"hop {landing.apex:.0f} uu")
+        if landing.cycle is not None:
+            after.append(f"next landing +{landing.cycle} ticks")
+        if after:
+            lines.append(", ".join(after))
         prims.append(draw.text([landing.pos[0], landing.pos[1], landing.pos[2] + 120], "\n".join(lines), color))
         return prims
 
