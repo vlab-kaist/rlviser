@@ -3,6 +3,7 @@
     rlviz demo [--live] [--out game.rlviz] [--seconds 60] [--mode soccar] [--layers ...]
     rlviz annotate in.rlviz out.rlviz [--layers ...]
     rlviz info game.rlviz
+    rlviz wavedash game.rlviz       (landing -> jump press histogram, hop and cycle medians)
     rlviz video plays.rlviz plays.mp4 [--speed 0.35] [--labels "alone|vs bot 1"] [--sequence] [--slow-wavedash]
 """
 
@@ -75,6 +76,15 @@ def cmd_info(args) -> None:
               f"({ticks / header['tick_rate']:.1f} s), draw groups: {groups}")
 
 
+def cmd_wavedash(args) -> None:
+    import json
+
+    from .layers.wavedash import landings, stats
+
+    header, frames = read_replay(args.input)
+    print(json.dumps(stats(landings(header, frames)), indent=1))
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(prog="rlviz")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -105,6 +115,10 @@ def main(argv=None) -> None:
     p = sub.add_parser("info", help="summarize a replay")
     p.add_argument("input")
     p.set_defaults(fn=cmd_info)
+
+    p = sub.add_parser("wavedash", help="wave dash stats: landing -> jump press histogram (ticks), hop, cycle")
+    p.add_argument("input")
+    p.set_defaults(fn=cmd_wavedash)
 
     from . import video
 

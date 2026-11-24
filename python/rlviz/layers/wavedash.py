@@ -9,8 +9,8 @@ Drawn for each landing of the current run: the dodge point (orange), the car's p
 landing (yellow for a wave dash, grey otherwise) and a label at the landing point: dodge -> landing
 ticks, the nose angle at contact (+ nose up), and the ground speed and the speed toward the ball from
 just before the dodge to ``after_ticks`` after the landing. Once known, the label also gets what
-followed the landing: ticks to the next jump (``jumped`` turning on), the height of that hop's apex
-above the lowest point on the ground, and the cycle length (ticks to the next landing). Only the
+followed the landing: ticks to the next jump press (the rising edge of the jump control), the height
+of that hop's apex above the car's height at the press, and the cycle length (ticks to the next landing). Only the
 latest ``full_labels`` landings keep the full label; older ones are shortened, so chained dashes
 stay readable. While a dodge is in the air, the car shows
 how many ticks ago it dodged. A 2D line counts the wave dashes and air landings so far. Markers are
@@ -66,7 +66,7 @@ class Landing:
     toward_before: float = 0.0
     speed_after: float | None = None
     toward_after: float | None = None
-    ground_z: float | None = None
+    press_z: float | None = None
     jump_ticks: int | None = None
     apex: float | None = None
     cycle: int | None = None
@@ -84,7 +84,7 @@ class _Car:
     dodge_dir: str = ""
     before: tuple = (0.0, 0.0)
     path: list = field(default_factory=list)
-    jumped: bool = False
+    press: bool = False
     last: Landing | None = None
 
 
@@ -120,14 +120,13 @@ class WaveDash(Layer):
             st = self.cars.setdefault(car["id"], _Car(air=not car.get("on_ground", True)))
             prev = ctx.prev_car(car["id"]) if ctx.prev is not None and tick == ctx.prev["tick"] + 1 else None
             on_ground, flipped = car.get("on_ground", True), car.get("flipped", False)
-            jumped, last, z = car.get("jumped", False), st.last, car["pos"][2]
+            controls = car.get("controls")
+            press, last, z = bool(controls) and controls[5] > 0.5, st.last, car["pos"][2]
             if last is not None and last.cycle is None:  # what follows the latest landing
-                if on_ground and last.jump_ticks is None:
-                    last.ground_z = z if last.ground_z is None else min(last.ground_z, z)
-                if jumped and not st.jumped and last.jump_ticks is None:
-                    last.jump_ticks = tick - last.tick
-                if last.jump_ticks is not None and last.ground_z is not None:
-                    last.apex = max(last.apex or 0.0, z - last.ground_z)
+                if press and not st.press and last.jump_ticks is None:
+                    last.jump_ticks, last.press_z = tick - last.tick, z
+                if last.press_z is not None:
+                    last.apex = max(last.apex or 0.0, z - last.press_z)
             if not on_ground:
                 if not st.air:
                     st.air, st.dodge_tick, st.path = True, None, []
@@ -147,13 +146,12 @@ class WaveDash(Layer):
                 if st.last is not None and st.last.cycle is None:
                     st.last.cycle = tick - st.last.tick
                 st.last = landing
-                landing.ground_z = z
                 self.landings.append(landing)
                 self.all.append(landing)
                 self.air_landings += 1
                 self.wavedashes += self.is_wavedash(landing)
                 st.dodge_tick, st.path = None, []
-            st.flipped, st.jumped = flipped, jumped
+            st.flipped, st.press = flipped, press
             for landing in self.landings:
                 if landing.car_id == car["id"] and landing.speed_after is None \
                         and tick - landing.tick >= self.after_ticks:
@@ -211,3 +209,25 @@ def landings(header, frames, **kw) -> list[Landing]:
     for frame in frames:
         annotate(dict(frame, draw=[]))
     return layer.all
+
+
+def stats(landings_: list[Landing], max_ticks: int = 30) -> dict:
+    """Counts and the landing -> jump press histogram (ticks) of :func:`landings`' output."""
+    import statistics
+
+    def med(xs):
+        return statistics.median(xs) if xs else None
+
+    hist: dict[int, int] = {}
+    for land in landings_:
+        if land.jump_ticks is not None:
+            hist[land.jump_ticks] = hist.get(land.jump_ticks, 0) + 1
+    jumped = [land for land in landings_ if land.jump_ticks is not None and land.cycle is not None]
+    return {
+        "landings": len(landings_),
+        "wavedashes": sum(1 for land in landings_ if land.ticks() is not None and land.ticks() <= max_ticks),
+        "landing_to_press": dict(sorted(hist.items())),
+        "landing_to_press_median": med([land.jump_ticks for land in landings_ if land.jump_ticks is not None]),
+        "hop_median": med([land.apex for land in jumped]),
+        "cycle_median": med([land.cycle for land in jumped]),
+    }

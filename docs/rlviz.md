@@ -119,6 +119,7 @@ camera.
   camera, and tiles them (two side by side, more in a 2-column grid), all starting together and each
   holding its last frame. A run's last frame is skipped if it only clears the drawings. Renders on
   `$DISPLAY` (default `:99`, a virtual display such as Xvfb works).
+* `rlviz wavedash game.rlviz` prints the counts, the landing -> jump press histogram (ticks) and the hop and cycle medians.
 * **Many short runs, one after the other, slowed at moments**: `--sequence` chains the runs instead of
   tiling them. `--slow-wavedash` finds the landings after a dodge (the `wavedash` layer) and records at
   `--slow-speed` (0.25), keeping it slow for `--slow-window` (0.3) game seconds on each side of each
@@ -239,7 +240,7 @@ viewer builds the mesh once per group version.
 | `vectors.acc` | Acceleration (finite difference between frames, red, clamped to 600 uu) |
 | `vectors.angvel` | Angular velocity axis (purple, 40 uu per rad/s) |
 | `car_info` | Label above each car: name, boost, ground/air, J/DJ/F (jumped, double jumped, flipped), SS (supersonic), B (boosting) |
-| `wavedash` | Landings after a dodge, from frame fields only (also works on real-game recordings): dodge point, path to the landing, dodge->landing ticks (wave dash if at most 30), nose angle at contact, ground speed and speed toward the ball before the dodge -> 3 ticks after landing, then ticks to the next jump, hop apex and ticks to the next landing (full label on the latest 2 landings only); counter of wave dashes / air landings |
+| `wavedash` | Landings after a dodge, from frame fields only (also works on real-game recordings): dodge point, path to the landing, dodge->landing ticks (wave dash if at most 30), nose angle at contact, ground speed and speed toward the ball before the dodge -> 3 ticks after landing, then ticks from the landing to the next jump press (rising edge of the jump control), hop apex above the height at the press and ticks to the next landing (full label on the latest 2 landings only); counter of wave dashes / air landings |
 
 ## In the real game (RLBot v5)
 
