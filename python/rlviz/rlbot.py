@@ -35,6 +35,9 @@ GROUP_PREFIX = "rlviz:"
 #: Edges drawn for one mesh at most (a mesh's outline can be long).
 MAX_MESH_EDGES = 2000
 CIRCLE_SEGMENTS = 24
+#: RLBot drops a message over 64 KiB; a bigger group keeps only its last primitives (leaving room
+#: for the message's own framing).
+MAX_GROUP_BYTES = 60000
 
 MODES = {
     flat.GameMode.Soccar: "soccar",
@@ -243,6 +246,21 @@ def render_messages(prims: Iterable[dict]) -> list[flat.RenderMessage]:
     return out
 
 
+def fit_group(msgs: list[flat.RenderMessage], gid: int) -> flat.RenderGroup:
+    """``msgs`` as one render group, dropping the oldest (first) messages until it fits."""
+    group = flat.RenderGroup(msgs, gid)
+    if len(group.pack()) <= MAX_GROUP_BYTES:
+        return group
+    lo, hi = 0, len(msgs)  # smallest drop count that fits is in (lo, hi]
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        if len(flat.RenderGroup(msgs[mid:], gid).pack()) <= MAX_GROUP_BYTES:
+            hi = mid
+        else:
+            lo = mid
+    return flat.RenderGroup(msgs[hi:], gid)
+
+
 def group_id(name: str) -> int:
     """RLBot render group id for an rlviz group name (stable across runs, unlike Python's hash)."""
     h = 2166136261
@@ -296,7 +314,7 @@ class LayerScript(Script):
             gid = group_id(group["name"])
             msgs = render_messages(group["prims"])
             if msgs:
-                self._game_interface.send_msg(flat.RenderGroup(msgs, gid))
+                self._game_interface.send_msg(fit_group(msgs, gid))
                 self.shown.add(group["name"])
             elif group["name"] in self.shown:
                 self._game_interface.send_msg(flat.RemoveRenderGroup(gid))

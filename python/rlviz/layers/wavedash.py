@@ -12,7 +12,8 @@ just before the dodge to ``after_ticks`` after the landing. Once known, the labe
 followed the landing: ticks to the next jump press (the rising edge of the jump control), the height
 of that hop's apex above the car's height at the press, and the cycle length (ticks to the next landing). Only the
 latest ``full_labels`` landings keep the full label; older ones are shortened, so chained dashes
-stay readable. While a dodge is in the air, the car shows
+stay readable, and only the latest ``keep`` are drawn at all (the real game never starts a new run,
+so markers would pile up). While a dodge is in the air, the car shows
 how many ticks ago it dodged. A 2D line counts the wave dashes and air landings so far. Markers are
 cleared when a new run starts (the tick does not advance by one).
 """
@@ -91,10 +92,11 @@ class _Car:
 class WaveDash(Layer):
     name = "wavedash"
 
-    def __init__(self, max_ticks: int = 30, after_ticks: int = 3, full_labels: int = 2):
+    def __init__(self, max_ticks: int = 30, after_ticks: int = 3, full_labels: int = 2, keep: int = 12):
         self.max_ticks = max_ticks
         self.after_ticks = after_ticks
         self.full_labels = full_labels
+        self.keep = keep
         self.reset()
 
     def reset(self) -> None:
@@ -159,8 +161,9 @@ class WaveDash(Layer):
                         and tick - landing.tick >= self.after_ticks:
                     landing.speed_after, landing.toward_after = _ground_speed(car), _toward_ball(car, ball)
 
-        for k, landing in enumerate(self.landings):
-            prims += self._landing_prims(landing, full=k >= len(self.landings) - self.full_labels)
+        shown = self.landings[-self.keep:]
+        for k, landing in enumerate(shown):
+            prims += self._landing_prims(landing, full=k >= len(shown) - self.full_labels)
         prims.append(draw.text2d(0.01, 0.92, f"wave dashes {self.wavedashes} / air landings {self.air_landings}",
                                  draw.YELLOW))
         return prims
